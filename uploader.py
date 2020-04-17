@@ -8,7 +8,7 @@ import yaml
 from utils.dataclasses import Module, Resource
 
 
-def extract_config(filename='database.ini', section='postgresql'):
+def extract_config(filename='database.ini', section='postgresql') -> dict:
     '''Extract all configuration information'''
     # From: https://www.postgresqltutorial.com/postgresql-python/connect/
     # Create a parser
@@ -40,25 +40,14 @@ def get_resources(path: Path) -> List[Resource]:
         for resource in resources]
 
 
-def get_linked_resources(resources: List[Resource]) -> Resource:
+def get_sorted_resources(resources: List[Resource]) -> List[Resource]:
     '''Link all provided resource by alphabetical order'''
+    # Make a copy of all resource
+    sorted_resources = resources[:]
     
-    def link_resource_to_next(to_link: List[Resource]):
-        '''Recursively link each resource to the next one'''
-        if len(to_link) == 1:
-            return
-        
-        to_link[0].next_resource = to_link[1]
-        link_resource_to_next(to_link[1:])
-    
-    # Order resources by name
-    resources.sort(key=lambda resource: resource.name)
-    
-    # Link each resource
-    link_resource_to_next(resources)
-
-    # Return the head of the linked resources
-    return resources[0]
+    # Sort the copy and return it
+    sorted_resources.sort(key=lambda resource: resource.name)
+    return sorted_resources
 
 
 def get_module(module: Path) -> Module:
@@ -96,16 +85,18 @@ def get_module_data(module_file: Path) -> Module:
     return Module(**data['module'])
 
 
-def record_module(module: Module, subscription_plan_id: int, config: dict = extract_config()):
+def record_module(
+    module: Module, subscription_plan_id: int,
+    config: dict = extract_config()) -> int:
     '''Record the provided module in database'''
     
     sql = '''
        INSERT INTO "module" ("ModuleDescription", "SubscriptionPlanId", "ModuleName")
-       VALUES(%s, %s, %s);
+       VALUES(%s, %s, %s) RETURNING "Id";
     '''
     
-    # From: https://www.postgresqltutorial.com/postgresql-python/insert/
     conn = None
+    module_id = 0
     try:
         # Connect to the PostgreSQL database
         conn = psycopg2.connect(**config)
@@ -113,6 +104,8 @@ def record_module(module: Module, subscription_plan_id: int, config: dict = extr
         cur = conn.cursor()
         # Execute the INSERT statement
         cur.execute(sql, (module.description, subscription_plan_id, module.name))
+        # get the generated id back
+        module_id = int(cur.fetchone()[0])
         # Commit the changes to the database
         conn.commit()
         # Close communication with the database
@@ -120,6 +113,55 @@ def record_module(module: Module, subscription_plan_id: int, config: dict = extr
     finally:
         if conn is not None:
             conn.close()
+    
+    return module_id
+
+
+def record_resource(
+    resource: Resource, module_id: int, next_resource_id: int,
+    config: dict = extract_config()) -> int:
+    '''Record the provided resource in database'''
+    
+    sql = '''
+       INSERT INTO "resource" ("ModuleId", "Content", "NextResourceId")
+       VALUES(%s, %s, %s) RETURNING "Id";
+    '''
+    conn = None
+    resource_id = 0
+    try:
+        # Connect to the PostgreSQL database
+        conn = psycopg2.connect(**config)
+        # Create a new cursor
+        cur = conn.cursor()
+        # Execute the INSERT statement
+        cur.execute(sql, (module_id, resource.content, next_resource_id))
+        # get the generated id back
+        resource_id = int(cur.fetchone()[0])
+        # Commit the changes to the database
+        conn.commit()
+        # Close communication with the database
+        cur.close()
+    finally:
+        if conn is not None:
+            conn.close()
+
+    return resource_id
+
+
+def record_resources(
+        resources: List[Resource], module_id: int,
+        config: dict = extract_config()) -> int:
+    '''Record the provided resources in database'''
+    # Since all resources are linked to each other, we need the index of the
+    # second resource to track the first
+    # To achieve that, we need to invert the order and start tracking the last
+    # which is not linked to any other resource
+    resources = resources[::-1]
+    
+    next_resource_id = None
+    for resource in resources:
+        next_resource_id = record_resource(resource, module_id, next_resource_id, config)
+
 
 @click.command()
 @click.argument('path', type=click.Path(exists=True))
@@ -144,17 +186,17 @@ def upload(path, module, subscription_plan_id):
     resources: List[Path] = get_resources(root_path)
     
     # Sort and link them
-    resources_head = get_linked_resources(resources)
+    resources = get_sorted_resources(resources)
 
     # Retrieve module meta data
     module_path = Path(module if module else path)
     module = get_module(module_path)
     
-    # Bind the first resource to the module
-    module.first_resource = resources_head
-
     # Add a new record for the module
-    record_module(module, subscription_plan_id)
+    module_id = record_module(module, subscription_plan_id)
+    
+    # Add a new track for all its associated resources
+    record_resources(resources, module_id)
 
 if __name__ == '__main__':
     upload()

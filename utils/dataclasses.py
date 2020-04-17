@@ -6,7 +6,6 @@ class Resource:
     '''Represent a resource of a module'''
     content: str
     name: str
-    next_resource: 'Resource' = None
 
 
 @dataclass(init=True)
