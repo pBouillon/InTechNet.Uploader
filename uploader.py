@@ -7,6 +7,9 @@ import yaml
 
 from utils.dataclasses import Module, Resource
 
+'''Set program's verbosity. True to display actions on execution'''
+isVerbose = False
+
 
 def extract_config(filename='database.ini', section='postgresql') -> dict:
     '''Extract all configuration information
@@ -16,6 +19,9 @@ def extract_config(filename='database.ini', section='postgresql') -> dict:
     
     :return: A dict with all connection parameters
     '''
+    if isVerbose:
+        print_info('Exctracting posgtres connection data')
+    
     # From: https://www.postgresqltutorial.com/postgresql-python/connect/
     # Create a parser
     parser = ConfigParser()
@@ -43,6 +49,9 @@ def get_resources(path: Path) -> List[Resource]:
     
     :return: A list of all found resources as objects
     '''
+    if isVerbose:
+        print_info('Retrieve existing resource files')
+        
     resources: List[Path] = path.glob('**/*.html')
     return [
         Resource(
@@ -58,6 +67,9 @@ def get_sorted_resources(resources: List[Resource]) -> List[Resource]:
     
     :return: A list of the same resources sorted by alphabetical order
     '''
+    if isVerbose:
+        print_info('Sort resources')
+        
     # Make a copy of all resource
     sorted_resources = resources[:]
     
@@ -73,6 +85,9 @@ def get_module(module: Path) -> Module:
     
     :return: The module's data as a Module object
     '''
+    if isVerbose:
+        print_info('Retrieve module configuration file')
+        
     # Get all YAML files
     module_conf_files = [
         file 
@@ -91,6 +106,9 @@ def get_module(module: Path) -> Module:
 
 def get_module_data(module_file: Path) -> Module:
     '''Extract module data from its configuration file'''
+    if isVerbose:
+        print_info('Extract module\'s data')
+        
     # Extract file data
     data = yaml.safe_load(module_file.read_text(encoding='utf8'))
     
@@ -106,6 +124,14 @@ def get_module_data(module_file: Path) -> Module:
     return Module(**data['module'])
 
 
+def print_info(message: str) -> None:
+    '''Print a debug message
+    
+    :param message: Message to display
+    '''
+    print(f'[INFO] {message}')
+
+
 def record_module(
     module: Module, subscription_plan_id: int,
     config: dict = extract_config()) -> int:
@@ -117,6 +143,8 @@ def record_module(
     
     :return: The newly inserted module id
     '''
+    if isVerbose:
+        print_info(f'Record the module "{module.name}"')
     
     sql = '''
        INSERT INTO "module" ("ModuleDescription", "SubscriptionPlanId", "ModuleName")
@@ -158,6 +186,8 @@ def record_resource(
     
     :return: The newly inserted resource id
     '''
+    if isVerbose:
+        print_info(f'Record the resource from {resource.name}')
     
     sql = '''
        INSERT INTO "resource" ("ModuleId", "Content", "NextResourceId")
@@ -194,6 +224,9 @@ def record_resources(
     :param module_id: Id of the module this resource is related to
     :param config: Postgresql connection parameters
     '''
+    if isVerbose:
+        print_info('Start recording resources')
+        
     # Since all resources are linked to each other, we need the index of the
     # second resource to track the first
     # To achieve that, we need to invert the order and start tracking the last
@@ -204,6 +237,8 @@ def record_resources(
     for resource in resources:
         next_resource_id = record_resource(resource, module_id, next_resource_id, config)
 
+    if isVerbose:
+        print_info('End resource recording')
 
 @click.command()
 @click.argument('path', type=click.Path(exists=True))
@@ -220,8 +255,19 @@ def record_resources(
     default=1,
     help='Id of the subscription plan to which this module is intended',
     type=int)
-def upload(path, module, subscription_plan_id):
+@click.option(
+    '--verbose',
+    is_flag=True,
+    help='Set verbosity to True to display actions in the console on execution')
+def upload(path, module, subscription_plan_id, verbose):
     '''Upload a module and its resources in the correct order'''
+    # Set verbosity level
+    global isVerbose
+    isVerbose = verbose
+
+    if isVerbose:
+        print_info('Start uploading')
+
     root_path = Path(path)
     
     # Retrieve all resources
@@ -240,6 +286,9 @@ def upload(path, module, subscription_plan_id):
     # Add a new track for all its associated resources
     record_resources(resources, module_id)
 
+    if isVerbose:
+        print_info('Done !')
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     upload()
+    
