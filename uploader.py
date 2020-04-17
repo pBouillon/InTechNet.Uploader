@@ -9,7 +9,13 @@ from utils.dataclasses import Module, Resource
 
 
 def extract_config(filename='database.ini', section='postgresql') -> dict:
-    '''Extract all configuration information'''
+    '''Extract all configuration information
+    
+    :param filename: Path to the .ini configuration file
+    :param section: Section from which fetching all postgresql connection data
+    
+    :return: A dict with all connection parameters
+    '''
     # From: https://www.postgresqltutorial.com/postgresql-python/connect/
     # Create a parser
     parser = ConfigParser()
@@ -31,8 +37,13 @@ def extract_config(filename='database.ini', section='postgresql') -> dict:
 
 
 def get_resources(path: Path) -> List[Resource]:
-    '''Retrieve all html resources inside the module folder'''
-    resources: List[Path] = path.glob('*.html')
+    '''Retrieve all html resources inside the module folder
+    
+    :param path: Path of the folder in which look for all resources
+    
+    :return: A list of all found resources as objects
+    '''
+    resources: List[Path] = path.glob('**/*.html')
     return [
         Resource(
             content=resource.read_text(encoding='utf8'),
@@ -41,7 +52,12 @@ def get_resources(path: Path) -> List[Resource]:
 
 
 def get_sorted_resources(resources: List[Resource]) -> List[Resource]:
-    '''Link all provided resource by alphabetical order'''
+    '''Link all provided resource by alphabetical order
+    
+    :param resources: The list of all resources to sort
+    
+    :return: A list of the same resources sorted by alphabetical order
+    '''
     # Make a copy of all resource
     sorted_resources = resources[:]
     
@@ -51,7 +67,12 @@ def get_sorted_resources(resources: List[Resource]) -> List[Resource]:
 
 
 def get_module(module: Path) -> Module:
-    '''Get module meta data'''
+    '''Get module meta data
+    
+    :param module: Path of the folder in which look for the .yaml module file
+    
+    :return: The module's data as a Module object
+    '''
     # Get all YAML files
     module_conf_files = [
         file 
@@ -88,7 +109,14 @@ def get_module_data(module_file: Path) -> Module:
 def record_module(
     module: Module, subscription_plan_id: int,
     config: dict = extract_config()) -> int:
-    '''Record the provided module in database'''
+    '''Record the provided module in database
+    
+    :param module: Module to record in database
+    :param subscription_plan_id: Id of its associated subscription plan
+    :param config: Postgresql connection parameters
+    
+    :return: The newly inserted module id
+    '''
     
     sql = '''
        INSERT INTO "module" ("ModuleDescription", "SubscriptionPlanId", "ModuleName")
@@ -120,7 +148,16 @@ def record_module(
 def record_resource(
     resource: Resource, module_id: int, next_resource_id: int,
     config: dict = extract_config()) -> int:
-    '''Record the provided resource in database'''
+    '''Record the provided resource in database
+    
+    :param resource: Resource to record in database
+    :param module_id: Id of the module this resource is related to
+    :param next_resource_id: Id of the resource following this one, None if
+                             this resource is the last one
+    :param config: Postgresql connection parameters
+    
+    :return: The newly inserted resource id
+    '''
     
     sql = '''
        INSERT INTO "resource" ("ModuleId", "Content", "NextResourceId")
@@ -150,8 +187,13 @@ def record_resource(
 
 def record_resources(
         resources: List[Resource], module_id: int,
-        config: dict = extract_config()) -> int:
-    '''Record the provided resources in database'''
+        config: dict = extract_config()) -> None:
+    '''Record the provided resources in database
+    
+    :param resources: The list of all Resource objects to insert
+    :param module_id: Id of the module this resource is related to
+    :param config: Postgresql connection parameters
+    '''
     # Since all resources are linked to each other, we need the index of the
     # second resource to track the first
     # To achieve that, we need to invert the order and start tracking the last
@@ -197,6 +239,7 @@ def upload(path, module, subscription_plan_id):
     
     # Add a new track for all its associated resources
     record_resources(resources, module_id)
+
 
 if __name__ == '__main__':
     upload()
