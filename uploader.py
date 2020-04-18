@@ -238,7 +238,7 @@ def record_resources(
         next_resource_id = record_resource(resource, module_id, next_resource_id, config)
 
     if isVerbose:
-        print_info('End resource recording')
+        print_info('End resources recording')
 
 @click.command()
 @click.argument('path', type=click.Path(exists=True))
