@@ -13,4 +13,3 @@ class Module:
     '''Represent a module'''
     description: str
     name: str
-    first_resource: Resource = None
